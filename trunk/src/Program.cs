@@ -27,6 +27,8 @@
 
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace vurdalakov.randomfile
 {
@@ -34,7 +36,7 @@ namespace vurdalakov.randomfile
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("\nRandomFile v1.02\nThis program generates a file with given length and random content\nhttp://www.vurdalakov.net");
+            Console.WriteLine("\nRandomFile v1.03\nThis program generates a file with given length and random content\nhttp://www.vurdalakov.net\n");
 
             if ((args.Length < 2) || (args.Length > 3))
             {
@@ -98,6 +100,8 @@ namespace vurdalakov.randomfile
 
             UInt32 bufferSize = 65536;
 
+            HashAlgorithm hashAlgorithm = HashAlgorithm.Create("SHA1");
+
             using (FileStream fileStream = new FileStream(fileName, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.SequentialScan | FileOptions.WriteThrough))
             {
                 byte[] buffer = new byte[bufferSize];
@@ -106,6 +110,7 @@ namespace vurdalakov.randomfile
                 for (UInt64 i = 0; i < numberOfFullBuffers; i++)
                 {
                     random.NextBytes(buffer);
+                    hashAlgorithm.TransformBlock(buffer, 0, buffer.Length, buffer, 0);
                     fileStream.Write(buffer, 0, buffer.Length);
 
                     int percent = (int)(i * 100 / numberOfFullBuffers);
@@ -121,13 +126,30 @@ namespace vurdalakov.randomfile
                 {
                     buffer = new byte[remainder];
                     random.NextBytes(buffer);
+                    hashAlgorithm.TransformBlock(buffer, 0, buffer.Length, buffer, 0); 
                     fileStream.Write(buffer, 0, buffer.Length);
                 }
+
+                hashAlgorithm.TransformFinalBlock(buffer, 0, 0);
             }
 
             TimeSpan duration = DateTime.Now.Subtract(startTime);
 
             Console.WriteLine("\rGenerated in {0:N1} seconds", Convert.ToDouble(duration.TotalMilliseconds) / 1000);
+
+            Console.WriteLine("SHA-1 hash: {0}", BytesToString(hashAlgorithm.Hash));
+        }
+
+        private static String BytesToString(Byte[] bytes)
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                stringBuilder.AppendFormat("{0:X2}", bytes[i]);
+            }
+
+            return stringBuilder.ToString();
         }
     }
 }
