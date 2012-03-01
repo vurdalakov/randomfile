@@ -34,7 +34,7 @@ namespace vurdalakov.randomfile
     {
         static int Main(string[] args)
         {
-            Console.WriteLine("\nRandomFile v1.04 | http://www.vurdalakov.net\nThis program generates a file with given length and random content\n");
+            Console.WriteLine("\nRandomFile v1.05 | http://www.vurdalakov.net\nThis program generates a file with given length and random content\n");
 
             if (args.Length < 2)
             {
@@ -125,12 +125,14 @@ namespace vurdalakov.randomfile
                 hashCalculator.TransformFinalBlock();
             }
 
+            Console.Write("\r");
+
             if (hashCalculator.CalculateSha1Hash)
             {
                 Console.WriteLine("SHA-1 hash: {0}", hashCalculator.Sha1Hash);
             }
 
-            Console.WriteLine("\rGenerated in {0:N1} seconds", Convert.ToDouble(DateTime.Now.Ticks - ticks) / 10000000);
+            Console.WriteLine("Generated in {0:N1} seconds", Convert.ToDouble(DateTime.Now.Ticks - ticks) / 10000000);
 
             return 0;
         }
