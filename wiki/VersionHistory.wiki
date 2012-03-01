@@ -1,6 +1,6 @@
 #summary RandomFile version history
 
-=== Version 1.04 (01.03.2012) ===
+=== Version 1.05 (01.03.2012) ===
 
 <ul>
 <li>Optionally generates ASCII files, that consist only of ASCII characters 32-127.</li>
