@@ -27,80 +27,72 @@
 
 using System;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace vurdalakov.randomfile
 {
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
-            Console.WriteLine("\nRandomFile v1.03\nThis program generates a file with given length and random content\nhttp://www.vurdalakov.net\n");
+            Console.WriteLine("\nRandomFile v1.04 | http://www.vurdalakov.net\nThis program generates a file with given length and random content\n");
 
-            if ((args.Length < 2) || (args.Length > 3))
+            if (args.Length < 2)
             {
-                Console.WriteLine("\nUsage:\n\trandomfile <file name> <size in bytes> [seed]\n\trandomfile <file name> <sizeK or sizeKB in kilobytes> [seed]\n\trandomfile <file name> <sizeM or sizeMB in megabytes> [seed]\n\trandomfile <file name> <sizeG or sizeGB in gigabytes> [seed]");
-                Console.WriteLine("\nExamples:\n\trandomfile random.bin 1073741824\n\trandomfile random.bin 1048576K\n\trandomfile random.bin 1024M\n\trandomfile random.bin 1G\n\trandomfile random.bin 64kb 12345\n\trandomfile random.bin 8mb 67890");
-                return;
+                return Help();
             }
 
-            DateTime startTime = DateTime.Now;
+            long ticks = DateTime.Now.Ticks;
 
             String fileName = args[0];
 
             String sizeAsString = args[1];
 
-            int seed = args.Length > 2 ? Convert.ToInt32(args[2]) : -1;
+            int seed = (args.Length > 2) && !IsOption(args[2]) ? Convert.ToInt32(args[2]) : -1;
+            RandomNumberGenerator randomNumberGenerator = new RandomNumberGenerator(seed);
 
             UInt64 fileSize;
-            if (sizeAsString.EndsWith("K", StringComparison.CurrentCultureIgnoreCase))
+            if (sizeAsString.EndsWith("K", StringComparison.CurrentCultureIgnoreCase) || sizeAsString.EndsWith("KB", StringComparison.CurrentCultureIgnoreCase))
             {
                 fileSize = Convert.ToUInt64(sizeAsString.Substring(0, sizeAsString.Length - 1)) * 1024;
             }
-            else if (sizeAsString.EndsWith("KB", StringComparison.CurrentCultureIgnoreCase))
-            {
-                fileSize = Convert.ToUInt64(sizeAsString.Substring(0, sizeAsString.Length - 2)) * 1024;
-            }
-            else if (sizeAsString.EndsWith("M", StringComparison.CurrentCultureIgnoreCase))
+            else if (sizeAsString.EndsWith("M", StringComparison.CurrentCultureIgnoreCase) || sizeAsString.EndsWith("MB", StringComparison.CurrentCultureIgnoreCase))
             {
                 fileSize = Convert.ToUInt64(sizeAsString.Substring(0, sizeAsString.Length - 1)) * 1024 * 1024;
             }
-            else if (sizeAsString.EndsWith("MB", StringComparison.CurrentCultureIgnoreCase))
-            {
-                fileSize = Convert.ToUInt64(sizeAsString.Substring(0, sizeAsString.Length - 2)) * 1024 * 1024;
-            }
-            else if (sizeAsString.EndsWith("G", StringComparison.CurrentCultureIgnoreCase))
+            else if (sizeAsString.EndsWith("G", StringComparison.CurrentCultureIgnoreCase) || sizeAsString.EndsWith("GB", StringComparison.CurrentCultureIgnoreCase))
             {
                 fileSize = Convert.ToUInt64(sizeAsString.Substring(0, sizeAsString.Length - 1)) * 1024 * 1024 * 1024;
-            }
-            else if (sizeAsString.EndsWith("GB", StringComparison.CurrentCultureIgnoreCase))
-            {
-                fileSize = Convert.ToUInt64(sizeAsString.Substring(0, sizeAsString.Length - 2)) * 1024 * 1024 * 1024;
             }
             else
             {
                 fileSize = Convert.ToUInt64(sizeAsString);
             }
 
-            String seedString = seed >= 0 ? String.Format(" using seed {0}", seed) : "";
-            Console.WriteLine("Generating '{0}' file of size {1:N0} bytes{2}", fileName, fileSize, seedString);
+            HashCalculator hashCalculator = new HashCalculator();
+
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (IsOption(args[i]))
+                {
+                    switch (args[i].Substring(1).ToLower())
+                    {
+                        case "sha1":
+                            hashCalculator.CalculateSha1Hash = true;
+                            break;
+                        case "ascii":
+                            randomNumberGenerator.AsciiCharactersOnly = true;
+                            break;
+                        default:
+                            return Help();
+                    }
+                }
+            }
+
+            Console.WriteLine("Generating '{0}' file of size {1:N0} bytes using seed {2}", fileName, fileSize, randomNumberGenerator.Seed);
 
             int previousPercent = -1;
 
-            Random random;
-            if (seed >= 0)
-            {
-                random = new Random(seed);
-            }
-            else
-            {
-                random = new Random();
-            }
-
             UInt32 bufferSize = 65536;
-
-            HashAlgorithm hashAlgorithm = HashAlgorithm.Create("SHA1");
 
             using (FileStream fileStream = new FileStream(fileName, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.SequentialScan | FileOptions.WriteThrough))
             {
@@ -109,8 +101,8 @@ namespace vurdalakov.randomfile
                 UInt64 numberOfFullBuffers = fileSize / (UInt64)buffer.Length;
                 for (UInt64 i = 0; i < numberOfFullBuffers; i++)
                 {
-                    random.NextBytes(buffer);
-                    hashAlgorithm.TransformBlock(buffer, 0, buffer.Length, buffer, 0);
+                    randomNumberGenerator.NextBytes(buffer);
+                    hashCalculator.TransformBlock(buffer);
                     fileStream.Write(buffer, 0, buffer.Length);
 
                     int percent = (int)(i * 100 / numberOfFullBuffers);
@@ -125,31 +117,37 @@ namespace vurdalakov.randomfile
                 if (remainder > 0)
                 {
                     buffer = new byte[remainder];
-                    random.NextBytes(buffer);
-                    hashAlgorithm.TransformBlock(buffer, 0, buffer.Length, buffer, 0); 
+                    randomNumberGenerator.NextBytes(buffer);
+                    hashCalculator.TransformBlock(buffer); 
                     fileStream.Write(buffer, 0, buffer.Length);
                 }
 
-                hashAlgorithm.TransformFinalBlock(buffer, 0, 0);
+                hashCalculator.TransformFinalBlock();
             }
 
-            TimeSpan duration = DateTime.Now.Subtract(startTime);
+            if (hashCalculator.CalculateSha1Hash)
+            {
+                Console.WriteLine("SHA-1 hash: {0}", hashCalculator.Sha1Hash);
+            }
 
-            Console.WriteLine("\rGenerated in {0:N1} seconds", Convert.ToDouble(duration.TotalMilliseconds) / 1000);
+            Console.WriteLine("\rGenerated in {0:N1} seconds", Convert.ToDouble(DateTime.Now.Ticks - ticks) / 10000000);
 
-            Console.WriteLine("SHA-1 hash: {0}", BytesToString(hashAlgorithm.Hash));
+            return 0;
         }
 
-        private static String BytesToString(Byte[] bytes)
+        private static Boolean IsOption(String text)
         {
-            StringBuilder stringBuilder = new StringBuilder();
+            return ('-' == text[0]) || ('/' == text[0]);
+        }
 
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                stringBuilder.AppendFormat("{0:X2}", bytes[i]);
-            }
-
-            return stringBuilder.ToString();
+        private static int Help()
+        {
+            Console.WriteLine("Usage:\t\trandomfile <file name> <file size> [seed] [/options]");
+            Console.WriteLine("\nSize:\t\t- add K or KB for kilobytes (32K or 256KB)\n\t\t- add M or MB for megabytes (16M or 100MB)\n\t\t- add G or GB for gigabytes (2G or 16GB)");
+            Console.WriteLine("\nOptions:\t/ascii\t- generate only ASCII characters (32-127)\n\t\t/sha1\t- calculate SHA-1 hash");
+            Console.WriteLine("\nExamples:\trandomfile random.bin 1073741824\n\t\trandomfile random.bin 1048576K /sha1\n\t\trandomfile random.bin 1024M\n\t\trandomfile random.bin 1G\n\t\trandomfile random.bin 64kb 12345 /ascii\n\t\trandomfile random.bin 8mb 67890");
+            
+            return 1;
         }
     }
 }
